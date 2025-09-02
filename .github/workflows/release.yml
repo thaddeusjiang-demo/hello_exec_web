@@ -1,0 +1,101 @@
+name: Release Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  build-dmg:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout livebook repository
+      uses: actions/checkout@v4
+      with:
+        repository: livebook-dev/livebook
+        path: livebook
+
+    - name: Checkout hello_exec_web repository
+      uses: actions/checkout@v4
+      with:
+        repository: thaddeusjiang-demo/hello_exec_web
+        path: livebook/elixirkit/hello_exec_web
+        fetch-depth: 0  # 获取完整的 git 历史用于生成 release notes
+
+    - name: Set up Elixir
+      uses: erlef/setup-beam@v1
+      with:
+        elixir-version: '1.15.7-otp-26'
+        otp-version: '26.1.2'
+
+    - name: Restore dependencies cache
+      uses: actions/cache@v3
+      with:
+        path: livebook/elixirkit/hello_exec_web/deps
+        key: ${{ runner.os }}-mix-${{ hashFiles('livebook/elixirkit/hello_exec_web/mix.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-mix-
+
+    - name: Install dependencies
+      run: |
+        cd livebook/elixirkit/hello_exec_web
+        mix deps.get
+
+    - name: Build assets
+      run: |
+        cd livebook/elixirkit/hello_exec_web
+        mix assets.deploy
+
+    - name: Debug directory structure
+      run: |
+        echo "Current directory structure:"
+        ls -la
+        echo "Livebook directory:"
+        ls -la livebook/
+        echo "Elixirkit directory:"
+        ls -la livebook/elixirkit/
+        echo "Hello exec web directory:"
+        ls -la livebook/elixirkit/hello_exec_web/
+
+    - name: Make build scripts executable
+      run: |
+        cd livebook/elixirkit/hello_exec_web
+        chmod +x rel/appkit/build_app.sh
+        chmod +x rel/appkit/build_dmg.sh
+
+    - name: Build DMG
+      run: |
+        cd livebook/elixirkit/hello_exec_web/rel/appkit
+        ./build_dmg.sh
+      env:
+        MIX_ENV: prod
+        ELIXIRKIT_APP_NAME: HelloExecWeb
+        ELIXIRKIT_PROJECT_DIR: ${{ github.workspace }}/livebook/elixirkit/hello_exec_web
+
+    - name: Find DMG file
+      id: find-dmg
+      run: |
+        DMG_FILE=$(find livebook/elixirkit/hello_exec_web -name "*.dmg" -type f | head -1)
+        if [ -z "$DMG_FILE" ]; then
+          echo "DMG file not found!"
+          exit 1
+        fi
+        echo "dmg_file=$DMG_FILE" >> $GITHUB_OUTPUT
+        echo "Found DMG file: $DMG_FILE"
+
+    - name: Create Draft Release and Upload DMG
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.event.inputs.tag }}
+        name: HelloExecWeb ${{ github.event.inputs.tag }}
+        files: ${{ steps.find-dmg.outputs.dmg_file }}
+        draft: true
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

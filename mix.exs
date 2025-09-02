@@ -70,7 +70,28 @@ defmodule HelloExecWeb.MixProject do
         "tailwind hello_exec_web --minify",
         "esbuild hello_exec_web --minify",
         "phx.digest"
-      ]
+      ],
+      clean: &clean_build/1
     ]
+  end
+
+  # カスタムタスク：build フォルダをクリーンアップ
+  defp clean_build(_args) do
+    # メインの _build フォルダをクリーンアップ
+    if File.exists?("_build") do
+      File.rm_rf("_build")
+      IO.puts("✅ _build フォルダを削除しました")
+    else
+      IO.puts("ℹ️  _build フォルダは存在しません")
+    end
+
+    # rel/appkit の build フォルダをクリーンアップ
+    appkit_build_path = "rel/appkit/.build"
+    if File.exists?(appkit_build_path) do
+      File.rm_rf(appkit_build_path)
+      IO.puts("✅ rel/appkit/build フォルダを削除しました")
+    else
+      IO.puts("ℹ️  rel/appkit/build フォルダは存在しません")
+    end
   end
 end
